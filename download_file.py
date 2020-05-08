@@ -4,9 +4,11 @@ import glob
 import os
 import boto3
 import botocore
+from multiprocessing.dummy import Pool as ThreadPool
 
 from dotenv import load_dotenv
 load_dotenv()
+
 
 awskey = os.getenv('aws_key')
 awssecret = os.getenv('aws_secret')
@@ -19,6 +21,31 @@ s3 = boto3.resource('s3',
                     )
 
 bucket = s3.Bucket(s3_bucket)
+
+
+def hyper_down_game(g_list):
+    gameid = g_list[0]
+    season_to_get = g_list[1]
+    game_url = f'https://www.nfl.com/feeds-rs/boxscorePbp/{str(gameid)}.json'
+    with urllib.request.urlopen(game_url) as url:
+        data = json.loads(url.read().decode())
+    filepath = f'{season_to_get}/gamesheets/{gameid}.json'
+    save_to_bucket(data, filepath)
+
+
+def hyper_down_player(player):
+    player_url = f'https://www.nfl.com/feeds-rs/player/{player}.json'
+    player_stat_url = f'https://www.nfl.com/feeds-rs/playerStats/{player}.json'
+
+    with urllib.request.urlopen(player_url) as url:
+        data = json.loads(url.read().decode())
+    filepath = f'{season_to_get}/playersheets/{player}.json'
+    save_to_bucket(data, filepath)
+
+    filepath = f'{season_to_get}/player_stat_sheets/{player}.json'
+    with urllib.request.urlopen(player_stat_url) as url:
+        data = json.loads(url.read().decode())
+    save_to_bucket(data, filepath)
 
 
 def save_to_bucket(data, filepath):
@@ -54,14 +81,12 @@ def download_gamesheet(season_to_get):
 
     game_id = []
     for s in schedule['gameSchedules']:
-        game_id.append(s['gameId'])
+        game_id.append((s['gameId'], season_to_get))
 
-    for g in game_id:
-        game_url = f'https://www.nfl.com/feeds-rs/boxscorePbp/{str(g)}.json'
-        with urllib.request.urlopen(game_url) as url:
-            data = json.loads(url.read().decode())
-        filepath = f'{season_to_get}/gamesheets/{g}.json'
-        save_to_bucket(data, filepath)
+    pool = ThreadPool(4)
+    pool.map(hyper_down_game, game_id)
+    pool.close()
+    pool.join()
 
 
 def download_player(season_to_get):
@@ -83,17 +108,10 @@ def download_player(season_to_get):
                             if k['player']['nflId'] not in nflid_list:
                                 nflid_list.append(k['player']['nflId'])
 
-    for player in nflid_list:
-        player_url = f'https://www.nfl.com/feeds-rs/player/{player}.json'
-        player_stat_url = f'https://www.nfl.com/feeds-rs/playerStats/{player}.json'
-        with urllib.request.urlopen(player_url) as url:
-            data = json.loads(url.read().decode())
-        filepath = f'{season_to_get}/playersheets/{player}.json'
-        save_to_bucket(data, filepath)
-        with urllib.request.urlopen(player_stat_url) as url:
-            data = json.loads(url.read().decode())
-        filepath = f'{season_to_get}/player_stat_sheets/{player}.json'
-        save_to_bucket(data, filepath)
+    pool = ThreadPool(50)
+    pool.map(hyper_down_player, nflid_list)
+    pool.close()
+    pool.join()
 
 
 def download_coach(season_to_get):
@@ -137,9 +155,9 @@ def main():
     season_to_get = input(str('Enter Season to download: '))
     download_season_schedule(season_to_get)
     download_gamesheet(season_to_get)
-    download_player(season_to_get)
-    download_coach(season_to_get)
-    download_team(season_to_get)
+    # download_player(season_to_get)
+    # download_coach(season_to_get)
+    # download_team(season_to_get)
 
 
 if __name__ == "__main__":

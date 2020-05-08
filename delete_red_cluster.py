@@ -77,7 +77,7 @@ def main():
     red_role_arn = ''
 
     config = configparser.ConfigParser()
-    config.read_file(open('vpconfig.cfg'))
+    config.read_file(open('../udacity_data_eng_capstone_nfl_data/vpconfig.cfg'))
     config.set('RED', 'red_endpoint', red_endpoint)
     config.set('IAM_ROLE', 'arn', red_role_arn)
 
